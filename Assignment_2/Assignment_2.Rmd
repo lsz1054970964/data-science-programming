@@ -1,0 +1,503 @@
+---
+title: "TDPS22: Assignment 2"
+output: html_document
+---
+
+*Prepared for the course "TDPS22: Data Science Programming" at Jönköping University, Teacher: [Marcel Bollmann](mailto:marcel.bollmann@ju.se)*
+
+# Assignment 2: Data Science Workflows in R
+
+In this assignment, you will analyze city bike usage in Helsinki, Finland.  The data comes from the Helsinki Regional Transport Authority and was compiled into the [Helsinki City Bikes](https://www.kaggle.com/datasets/geometrein/helsinki-city-bikes) dataset by Tigran Khachatryan, licensed under CC BY-SA 4.0.  We are only working with _a small, sampled subset_ of the data here (the full dataset is almost 2 GB!).  Additionally, we use weather observations from the [Finnish Meteorological Institute](https://en.ilmatieteenlaitos.fi/download-observations), licensed under CC BY 4.0.
+
+### Instructions
+
+- The assignment is structured into parts, each of which consists of one or more tasks and/or questions.  You should provide your code to arrive at the solutions _directly below_ the respective task/question in this notebook.  You can add as many cells as you want and perform as many intermediate steps as you want, but **the last output of each task/question should clearly show the answer** to that task or question.
+
+
+- You are allowed to consult any resources (books/websites/exercises), but each assignment group should **work on the assignment on their own.**   You may ask questions about specific R/Tidyverse/ggplot2/etc. functionality or about the exercises on Canvas, but **you may _not_ directly share answers for tasks in this assignment.**
+
+
+- You should **submit your finished assignment as a single Jupyter notebook (.ipynb) _or_ R Markdown (.Rmd) file** through Canvas. ***Before you submit,*** make sure that your notebook runs correctly from start to finish. In Jupyter Notebook, you can do this by going to the menu, choosing "Kernel", then "Restart & Run All", and verify that all cells show the expected output. With R Markdown, you can do this by "Knitting" your document to HTML or PDF, and verifying that everything looks as expected.
+
+
+### Grading
+
+- This assignment is graded Pass/Fail.
+
+
+- In order of importance, the criteria for passing are **demonstrating an understanding** of how to implement data science tasks in R, **correctness** of the solution, as well as **clean coding style**. You do _not_ need to find the "shortest" or "most elegant" solution to each problem. It is more important that you show an understanding of how to manipulate, visualize, and model data in R; arrive at a correct solution; and that I can understand your reasoning for what you did and why you did it. I encourage you to _use comments in your code_ to explain your approach when the code gets more complex.
+
+
+- To _pass_ this assignment, you must provide a solution for _all of the tasks below_.  You can still pass if some of your solutions are not entirely correct or lacking in coding style, as long as they show a general understanding of how to approach the problem.
+
+- - -
+
+```{r}
+### SETUP -- You do NOT need to modify this cell, but you may add your own imports later
+library(tidyverse)
+library(lubridate)
+
+bikes <- read_csv("data/helsinki-city-bikes-sample.csv")
+weather <- read_csv("data/helsinki-weather.csv")
+```
+
+- - -
+
+## Part 1: Tidy up and merge the datasets!
+
+You are given two datasets, `bikes` and `weather`, containing observations from April 2019 to October 2019.
+
+The `bikes` dataset contains usage data from Helsinki city bikes, with the following columns:
+
+- `departure`: timestamp of departure, i.e., when a city bike was borrowed
+- `return`: timestamp of return, i.e., when the city bike was returned
+- `departure_name` and `return_name`: names of the city bike stations where the bike was borrowed and returned
+- `distance (m)`: the distance between the departure station and return station
+- `avg_speed (km/h)`: the average speed of the bike trip
+
+The `weather` dataset contains daily observations from the "Helsinki Kaisaniemi" weather station, with the following columns:
+
+- `Year`, `m`, `d`: the year, month, and day of the observation
+- `Precipitation amount (mm)`: the amount of precipitation, i.e., rain or snow fall, in millimeters
+- `Air temperature (degC)`: the average air temperature in °C
+
+### Tasks
+
+- <span class="badge">Task</span> **Determine if the datasets are in "tidy" format, and convert them if needed!** Write a short paragraph with your reasoning _why_ or _why not_ the datasets are in "tidy" format. If they are not, provide your code to convert them.
+
+```{r}
+# YOUR SOLUTION HERE
+
+# There are three interrelated rules that make a dataset tidy
+# 1.Each variable is a column; each column is a variable.
+# 2.Each observation is row; each row is an observation.
+# 3.Each value is a cell; each cell is a single value.
+
+#Both bikes and weather datasets are tidy because it follows the rules above.
+```
+
+- <span class="badge">Task</span> **Analyze the data for missing or unusual values and clean them up, if needed!** Are there NAs or otherwise missing values? Are there values that don't make sense? If there are, decide how to deal with them – e.g., drop some rows, modify the values, etc. – and explain your reasoning.
+
+```{r}
+# YOUR SOLUTION HERE
+a = sum(is.na(bikes))
+print(a)
+#There is no NA in bikes dataset
+
+b = sum(is.na(weather))
+print(b)
+#There is no NA in weather dataset
+```
+```{r}
+#Check the distance of 0 or 1 which dosen't make sense for a bike ride
+sum(bikes$`distance (m)` == 0)
+sum(bikes$`distance (m)` == 1)
+
+```
+
+```{r}
+#Drop rows of the distance of 0 or 1 
+bikes <- bikes[bikes$`distance (m)` != 0 & bikes$`distance (m)` != 1, ]
+```
+
+```{r}
+#Check whether return time is after departure time
+sum(bikes$departure >= bikes$return)
+```
+```{r}
+#Drop the wrong data
+bikes <- bikes[bikes$departure<bikes$return, ]
+```
+
+
+```{r}
+#Check the precipitation of -1mm
+sum(weather$`Precipitation amount (mm)` < 0)
+```
+```{r}
+#Replace -1 with 0
+weather$`Precipitation amount (mm)` <- replace(weather$`Precipitation amount (mm)`, weather$`Precipitation amount (mm)`<0, 0)
+
+```
+
+- <span class="badge">Task</span> **Merge the weather observations into the bikes dataset!** Make new columns for the weather observations (`Precipitation amount (mm)` and `Air temperature (degC)`) in the `bikes` dataset and fill them with appropriate data from the date of the bike trip.
+
+
+```{r}
+# YOUR SOLUTION HERE
+# seperate departure time column in bike dataset
+bikes <- bikes%>% 
+    separate(departure, c("Year", "Month", "Day_time"),
+             sep = "-", remove = FALSE) %>% 
+    separate(Day_time, c("Day", "Time"),
+             sep = " ", remove = TRUE)
+
+bikes
+```
+
+```{r}
+# change the year, month and day data into numeric
+bikes$Year <- as.numeric(bikes$Year)
+bikes$Month <- as.numeric(bikes$Month)
+bikes$Day <- as.numeric(bikes$Day)
+
+bikes
+```
+
+
+
+```{r}
+# fill in precipitation and termperature columns
+bikes = merge(x = bikes, y = weather, by.x = c('Year', 'Month', 'Day'), by.y = c('Year', 'm', 'd'))
+
+bikes
+```
+
+- - -
+
+## Part 2: Answer questions about the data distribution!
+
+Here, we are going to look into the distribution of individual variables in the dataset. Your aim is to get a better understanding of the data by answering questions about it.
+
+- <span class="badge">Task</span> **What is the minimum, average, and maximum _distance_ of a bike ride? Also produce a visualization to show the _distribution_ of the "distance" variable.**
+
+```{r}
+# YOUR SOLUTION HERE
+# Max
+max(bikes$`distance (m)`)
+```
+```{r}
+# Mean
+mean(bikes$`distance (m)`)
+```
+
+
+```{r}
+# Min
+min(bikes$`distance (m)`)
+```
+```{r}
+# Distribution
+hist(bikes$`distance (m)`, 
+     main="Histogram for distance", 
+     xlab="distance(m)",
+     xlim=c(0, 40000), 
+     breaks=100)
+```
+
+
+- <span class="badge">Task</span> **Perform the same analysis for the _average speed_ of a bike ride.**
+
+```{r}
+# YOUR SOLUTION HERE
+# Max
+max(bikes$`avg_speed (km/h)`)
+```
+```{r}
+# Mean
+mean(bikes$`avg_speed (km/h)`)
+```
+
+```{r}
+# Min
+min(bikes$`avg_speed (km/h)`)
+```
+
+```{r}
+# Distribution
+hist(bikes$`avg_speed (km/h)`, 
+     main="Histogram for average speed", 
+     xlab="avg_speed (km/h)"
+     )
+```
+
+- <span class="badge">Task</span> **Perform the same analysis for the _duration_ of a bike ride.** You need to calculate the duration first based on departure and return times; make a new column for this in the dataset.
+```{r}
+# YOUR SOLUTION HERE
+bikes <- bikes %>% mutate(duration = as.numeric(return-departure))
+
+bikes
+```
+
+```{r}
+# Max
+max(bikes$duration)
+```
+
+```{r}
+# Mean
+mean(bikes$duration)
+```
+
+```{r}
+# Min
+min(bikes$duration)
+```
+
+```{r}
+# Distribution
+hist(bikes$duration/60, 
+     main="Histogram for ride duration", 
+     xlab="duration (min)"
+     )
+```
+```{r}
+#99% of distribution is smaller than 50, so the histogram has been zoomed in and the distribution of duration(min) between 0 to 50 has been plotted
+hist(bikes$duration/60, 
+     main="Histogram for ride duration", 
+     xlab="duration (min)",
+     breaks = 20000,
+     xlim = c(0,50)
+     )
+```
+
+- <span class="badge">Task</span> **Sanity-check the _average speed_ column.** From the _distance_ and _duration_, you should be able to calculate the _average speed_ of the bike ride yourself. Do this and check if your results match what the dataset already provides in the `avg_speed (km/h)` column.
+
+```{r}
+# YOUR SOLUTION HERE
+bikes <- bikes %>% mutate(`cal_avg_speed (km/h)` = (bikes$distance/1000)/(bikes$duration/3600))
+
+bikes
+```
+
+```{r}
+near(bikes$`avg_speed (km/h)`, bikes$`cal_avg_speed (km/h)`,tol = 0.1)
+
+#Doesn't match
+```
+
+- <span class="badge">Task</span> **How many _stations_ are there in total in the city bike network?** Consider both stations used for departure and return.
+
+```{r}
+# YOUR SOLUTION HERE
+station <- c(bikes$departure_name, bikes$return_name)
+length(unique(station))
+```
+
+- <span class="badge">Task</span> **What are the _three most popular departure stations_?** You can use a visualization, a function (pipeline), or both to answer this question.
+
+```{r}
+# YOUR SOLUTION HERE
+bikes %>% count(departure_name, sort = TRUE)
+
+# The 3 most popular departure stations: Itämerentori, Töölönlahdenkatu and Kamppi (M)
+```
+
+- - -
+
+## Part 3: What affects the number of daily city bike rides?
+
+In this part, we are interested in analyzing _how many bike rides per day_ there are in our dataset, and what factors affect how many bike rides people make on a given day.
+
+- <span class="badge">Task</span> **Visualize the number of bike rides people make by day!** Your visualization should be a line plot that shows the date on the $x$-axis and the number of rides on that date on the $y$-axis.
+
+```{r}
+# YOUR SOLUTION HERE
+bikes_per_day <- bikes%>% 
+    separate(departure, c("Date", "Time"),
+             sep = " ", remove = TRUE)
+
+bikes_per_day
+```
+
+```{r}
+bikes_per_day <- bikes_per_day %>% count(Date)
+bikes_per_day
+```
+
+```{r}
+library("ggplot2")
+bikes_per_day$Date <- as.Date(bikes_per_day$Date)
+
+ggp <- ggplot(bikes_per_day, aes(x = Date, y = n)) +   
+  geom_line() + 
+  scale_x_date(date_labels = "%Y-%m-%d")
+
+ggp
+```
+
+- <span class="badge">Task</span> **Add a smoothed curve (e.g. using polynomial regression) on top of your visualization!**
+
+```{r}
+# YOUR SOLUTION HERE
+ggp <- ggp + geom_smooth(method = "lm",
+                         formula = y ~ poly(x, 8),
+                         se = FALSE)
+
+ggp 
+```
+
+- <span class="badge">Task</span> **Plot and analyze the distribution of bike rides _by day of the week_!** What days have the highest average usage of city bikes? What days have the lowest?
+
+```{r}
+# YOUR SOLUTION HERE
+bikes_per_weekday <- bikes_per_day
+bikes_per_weekday$Weekday <- strftime(bikes_per_weekday$Date, "%A")
+bikes_per_weekday
+```
+```{r}
+ggplot(bikes_per_weekday) +
+geom_boxplot(aes(x=Weekday, y=n)) + xlab("Weekday") +
+  ylab("Number of rides") +
+  ggtitle("Number of rides per weekday") 
+```
+```{r}
+#Wednesday has highest average usage of city bikes
+#Sunday has lowest average usage of city bikes
+```
+
+
+- <span class="badge">Task</span> **Analyze which of the following variables best explains the number of daily bike rides:**
+    - **_day of the week_** (i.e., Monday, Tuesday, ...);
+    - **_precipitation_ on that day**; _or_
+    - **_temperature_ on that day?**
+
+  In other words, do people bike less when it's cold? Is it more important whether it rains or not? Or do Helsinki residents bike in all weather conditions equally, as long as they need to get to work?
+
+  You can use any type and combination of visualizations, statistical models, or statistical analyses that you like. At the end of your analysis, please **write a few sentences** with your interpretation of the analysis.
+```{r}
+# YOUR SOLUTION HERE
+bikes_per_day$Weekday <- strftime(bikes_per_day$Date, "%u")
+bikes_per_day$Weekday <- as.integer(bikes_per_day$Weekday)
+bikes_per_day
+```
+
+
+```{r}
+weather$date <- paste(weather$Year, weather$m, weather$d, sep= "-")
+
+weather
+```
+```{r}
+weather$date <- as.Date(weather$date, format = "%Y-%m-%d")
+weather
+```
+
+```{r}
+bikes_weather <- merge(weather, bikes_per_day, by.x = "date", by.y = "Date")
+bikes_weather
+```
+
+
+```{r}
+bikes_weather <- merge(weather, bikes_per_day, by.x = "date", by.y = "Date")
+
+bikes_weather$scaled_n <- scale(bikes_weather$n)
+bikes_weather$scaled_weekday <- scale(bikes_weather$Weekday)
+bikes_weather$`scaled_Precipitation amount (mm)` <- scale(bikes_weather$`Precipitation amount (mm)`)
+bikes_weather$`scaled_Air temperature (degC)` <- scale(bikes_weather$`Air temperature (degC)`)
+
+bikes_weather
+```
+
+```{r}
+#The number of rides is used for x-axis
+#The weekday variable is nominal and it is hard to plot it against number of rides with the other 2 variables in the same plot so it has been changed to numeric variable. (Monday as 1, Tuesday as 2, Wednesday as 3, Thursday as 4, Friday as 5, Saturday as 6 and Sunday as 7)
+#The relationship between number of rides and precipitation has be shown in blue graph
+#The relationship between number of rides and temperature has be shown in green graph
+#In order to save the plotting space and draw all three graphs clearly in one plot, the number of rides, weekday, precipitation and temperature have been scaled
+ggp <- ggplot(bikes_weather, aes(x = scaled_n)) +   
+  geom_line(aes(y = scaled_weekday), color = "red") + 
+  geom_line(aes(y = `scaled_Precipitation amount (mm)`), color = "blue") +
+  geom_line(aes(y = `scaled_Air temperature (degC)`), color = "green") + 
+  xlab("Number of Rides") +
+  ylab("Different variables") +
+  ggtitle("Number of rides for weather")
+
+ggp
+```
+```{r}
+
+# Precipitation amount and Day of week doesn't explain the number of daily bike rides well. The red and blue graphs are similar to lines with slope of 0 which suggests there is almost no correlation between number of bike rides and these two variables.
+
+# Air temperature can best explain the number of daily bike rides. From the plot above, the green graph is similar to a line and its slope is larger than 0, so it suggests that there is correlation between number of bike rides and these two variables. More people ride bikes when air temperature is high and vice versa
+```
+
+- - -
+
+## Part 4: Visualize the number of bike rides based on _time of the day_ and _whether it is a weekend_!
+
+In this final part, we want to produce a visualization that allows us to see the number of bike rides based two variables:
+
+- **_time of day_**: the ride's departure time, **rounded down to 15-minute intervals.** For example:
+  - If departure is `2019-05-06 07:31:47`, the "time of day" is `07:30`.
+  - If departure is `2019-04-22 11:55:04`, the "time of day" is `11:45`.
+  
+  _(Note: You might want to create a function to produce this "time of day" first. If you cannot do this, you can start by just rounding down to full hours first.)_
+  
+  
+- **_weekdays vs. weekend_**: a ride is considered to be on a weekend if its departure is on a Saturday or Sunday; otherwise, is it considered to be a "weekday". _(You can ignore public holidays etc. for this task.)_
+
+
+The visualization should show the _time of day_ on one axis, the _number of rides_ on another axis, and use a third layout element to distinguish _weekdays vs. weekend_ (e.g., two different lines, or differently-colored bars).
+
+Additionally, the visualization needs to include **proper titles on the axes** as well as **a legend showing which elements correspond to _weekdays_ vs. _weekends_**.  In other words, prepare the visualization as you would for a poster or a presentation.
+
+
+- <span class="badge">Task</span> **Produce a visualization as described above!** Include all code necessary to reproduce your visualization, i.e. including all intermediate steps, below.
+
+```{r}
+# YOUR SOLUTION HERE
+bikes_time <- bikes
+bikes_time$departure <- round_date(bikes_time$departure, unit="15 minutes")
+
+bikes_time
+```
+```{r}
+bikes_time <- bikes_time%>% 
+    separate(departure, c("Date", "Time(round down to 15 mins)"),
+             sep = " ", remove = FALSE)
+
+bikes_time
+```
+```{r}
+bikes_time$Weekday <- strftime(bikes_time$Date, "%A")
+bikes_time
+```
+```{r}
+bikes_time$`WeekdayorWeekend` = ""
+
+for (i in 1:nrow(bikes_time)){
+  if (bikes_time$Weekday[i] == "Saturday" || bikes_time$Weekday[i] == "Sunday"){
+    bikes_time$`WeekdayorWeekend`[i] = "Weekend"
+  }else{
+    bikes_time$`WeekdayorWeekend`[i] = "Weekday"
+  }
+}
+
+bikes_time
+```
+```{r}
+bikes_time_weekday <- filter(bikes_time, WeekdayorWeekend == "Weekday")
+bikes_time_weekday <- bikes_time_weekday %>% count(`Time(round down to 15 mins)`)
+
+bikes_time_weekday
+```
+```{r}
+bikes_time_weekend <- filter(bikes_time, WeekdayorWeekend == "Weekend")
+bikes_time_weekend <- bikes_time_weekend %>% count(`Time(round down to 15 mins)`)
+
+bikes_time_weekend
+```
+
+
+```{r}
+#
+library(hms)
+
+bikes_time_weekend$`Time(round down to 15 mins)` <- as_hms(as.POSIXct(bikes_time_weekend$`Time(round down to 15 mins)`, format = "%H:%M:%S"))
+bikes_time_weekday$`Time(round down to 15 mins)` <- as_hms(as.POSIXct(bikes_time_weekday$`Time(round down to 15 mins)`, format = "%H:%M:%S"))
+
+ggplot()+   
+  geom_line(data = bikes_time_weekend, aes(x = `Time(round down to 15 mins)`, y = n), color = "red") + 
+  geom_line(data = bikes_time_weekday, aes(x = `Time(round down to 15 mins)`, y = n), color = "blue") + 
+  scale_x_time() + 
+  ylab("Number of bike rides") +
+  ggtitle("Number of bike rides per 15 mins for Weekdays and Weekends")
+ 
+```
+
+
+
+
+
